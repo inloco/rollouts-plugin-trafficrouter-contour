@@ -80,6 +80,8 @@ func (r *RpcPlugin) SetWeight(
 	unstr := utils.Must1(r.dynamicClient.Resource(contourv1.HTTPProxyGVR).Namespace(ctr.Namespace).Get(ctx, ctr.HTTPProxy, metav1.GetOptions{}))
 	utils.Must(runtime.DefaultUnstructuredConverter.FromUnstructured(unstr.UnstructuredContent(), &httpProxy))
 
+	slog.Debug(fmt.Sprintf("current httpProxy %+v", httpProxy))
+
 	canarySvcName := rollout.Spec.Strategy.Canary.CanaryService
 	stableSvcName := rollout.Spec.Strategy.Canary.StableService
 
@@ -111,6 +113,7 @@ func (r *RpcPlugin) SetWeight(
 		r.UpdatedMockHTTPProxy = &proxy
 	}
 
+	slog.Debug(fmt.Sprintf("updated httpProxy %+v", httpProxy))
 	slog.Info("update HTTPProxy is successfully")
 	return
 }
