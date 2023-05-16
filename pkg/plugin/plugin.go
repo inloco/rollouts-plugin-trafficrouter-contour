@@ -132,13 +132,19 @@ func getService(name string, services []contourv1.Service) (*contourv1.Service, 
 }
 
 func getServiceList(routes []contourv1.Route) ([]contourv1.Service, error) {
+	var services []contourv1.Service
 	for _, r := range routes {
 		if r.Services == nil {
 			continue
 		}
-		return r.Services, nil
+		services = append(services, r.Services...)
 	}
-	return nil, errors.New("the services are not found in HTTPProxy")
+
+	if len(services) == 0 {
+		return nil, errors.New("the services are not found in HTTPProxy")
+	}
+
+	return services, nil
 }
 
 func (r *RpcPlugin) SetHeaderRoute(rollout *v1alpha1.Rollout, headerRouting *v1alpha1.SetHeaderRoute) pluginTypes.RpcError {
