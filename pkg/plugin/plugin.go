@@ -92,6 +92,28 @@ func (r *RpcPlugin) SetMirrorRoute(rollout *v1alpha1.Rollout, setMirrorRoute *v1
 }
 
 func (r *RpcPlugin) VerifyWeight(rollout *v1alpha1.Rollout, desiredWeight int32, additionalDestinations []v1alpha1.WeightDestination) (pluginTypes.RpcVerified, pluginTypes.RpcError) {
+	if err := validateRolloutParameters(rollout); err != nil {
+		return pluginTypes.NotVerified, pluginTypes.RpcError{ErrorString: err.Error()}
+	}
+
+	ctr, err := getContourTrafficRouting(rollout)
+	if err != nil {
+		return pluginTypes.NotVerified, pluginTypes.RpcError{ErrorString: err.Error()}
+	}
+
+	ctx := context.Background()
+
+	for _, httpProxyName := range ctr.HTTPProxies {
+		slog.Debug("verifying httpproxy", slog.String("name", httpProxyName))
+
+		if err := r.verifyHTTPProxy(ctx, httpProxyName, rollout, desiredWeight); err != nil {
+			slog.Error("failed to verify httpproxy", slog.String("name", httpProxyName), slog.Any("err", err))
+			return pluginTypes.NotVerified, pluginTypes.RpcError{ErrorString: err.Error()}
+		}
+
+		slog.Info("successfully verified httpproxy", slog.String("name", httpProxyName))
+	}
+
 	return pluginTypes.Verified, pluginTypes.RpcError{}
 }
 
@@ -154,6 +176,30 @@ func (r *RpcPlugin) updateHTTPProxy(ctx context.Context, httpProxyName string, r
 	return nil
 }
 
+func (r *RpcPlugin) verifyHTTPProxy(ctx context.Context, httpProxyName string, rollout *v1alpha1.Rollout, desiredWeight int32) error {
+	httpProxy, err := r.getHttpProxy(ctx, rollout.Namespace, httpProxyName)
+	if err != nil {
+		return err
+	}
+
+	if err := validateHttpProxyStatus(httpProxy); err != nil {
+		return err
+	}
+
+	canarySvc, stableSvc, err := getCanaryAndStableServices(httpProxy, rollout)
+	if err != nil {
+		return err
+	}
+
+	canarySvcDesiredWeight := int64(desiredWeight)
+	stableSvcDesiredWeight := 100 - canarySvcDesiredWeight
+	if canarySvc.Weight != canarySvcDesiredWeight || stableSvc.Weight != stableSvcDesiredWeight {
+		return fmt.Errorf("expected weights are canary=%d and stable=%d, but got canary=%d and stable=%d", canarySvcDesiredWeight, stableSvcDesiredWeight, canarySvc.Weight, stableSvc.Weight)
+	}
+
+	return nil
+}
+
 func getCanaryAndStableServices(httpProxy *contourv1.HTTPProxy, rollout *v1alpha1.Rollout) (*contourv1.Service, *contourv1.Service, error) {
 	canarySvcName := rollout.Spec.Strategy.Canary.CanaryService
 	stableSvcName := rollout.Spec.Strategy.Canary.StableService
@@ -201,6 +247,15 @@ func getServiceMap(httpProxy *contourv1.HTTPProxy) map[string]*contourv1.Service
 		}
 	}
 	return svcMap
+}
+
+func validateHttpProxyStatus(httpProxy *contourv1.HTTPProxy) error {
+	for _, c := range httpProxy.Status.Conditions {
+		if httpProxy.Generation == c.ObservedGeneration && c.IsPositivePolarity() {
+			return nil
+		}
+	}
+	return fmt.Errorf("httpproxy status is not valid")
 }
 
 func validateRolloutParameters(rollout *v1alpha1.Rollout) error {
