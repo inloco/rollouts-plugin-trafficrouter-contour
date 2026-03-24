@@ -171,10 +171,61 @@ func (r *RpcPlugin) updateHTTPProxy(
 	return nil
 }
 
+func usesDefaultWeights(route *contourv1.Route) bool {
+	for _, s := range route.Services {
+		if s.Weight != 0 {
+			return false
+		}
+	}
+
+	return true
+}
+
+func setDefaultWeights(route *contourv1.Route) {
+	if !usesDefaultWeights(route) {
+		return
+	}
+
+	for i := range route.Services {
+		route.Services[i].Weight = 1
+	}
+}
+
+func weightSum(route *contourv1.Route) int64 {
+	sum := int64(0)
+
+	for _, s := range route.Services {
+		sum += s.Weight
+	}
+
+	return sum
+}
+
+func boostWeights(route *contourv1.Route, factor int64) {
+	for i := range route.Services {
+		route.Services[i].Weight *= factor
+	}
+}
+
+func normalizeWeights(route *contourv1.Route) {
+	setDefaultWeights(route)
+
+	sum := weightSum(route)
+	if sum >= 100 {
+		return
+	}
+
+	boostWeights(route, 100)
+}
+
 func createPatch(httpProxy *contourv1.HTTPProxy, rollout *v1alpha1.Rollout, canaryWeightPercent int32) ([]byte, types.PatchType, error) {
 	oldData, err := json.Marshal(httpProxy.DeepCopy())
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to marshal the current configuration: %w", err)
+	}
+
+	for i := range httpProxy.Spec.Routes {
+		normalizeWeights(&httpProxy.Spec.Routes[i])
 	}
 
 	canarySvcs, stableSvcs, totalWeights, err := getRouteServices(httpProxy, rollout)
@@ -262,22 +313,9 @@ func getRouteServices(httpProxy *contourv1.HTTPProxy, rollout *v1alpha1.Rollout)
 			return nil, nil, nil, err
 		}
 
-		otherWeight := int64(0)
-		for name, svc := range svcMap {
-			if name == stableSvcName || name == canarySvcName || svc.Mirror {
-				continue
-			}
-			otherWeight += svc.Weight
-		}
-
-		// the total weight must equals to 100
-		if otherWeight+canarySvc.Weight+stableSvc.Weight != 100 {
-			return nil, nil, nil, fmt.Errorf("the total weight must equals to 100")
-		}
-
 		canarySvcs = append(canarySvcs, canarySvc)
 		stableSvcs = append(stableSvcs, stableSvc)
-		totalWeights = append(totalWeights, 100-otherWeight)
+		totalWeights = append(totalWeights, canarySvc.Weight + stableSvc.Weight)
 	}
 
 	return canarySvcs, stableSvcs, totalWeights, nil
