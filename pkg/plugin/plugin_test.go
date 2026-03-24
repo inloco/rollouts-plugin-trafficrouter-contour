@@ -237,7 +237,7 @@ func Test_createPatch(t *testing.T) {
 		wantErr       bool
 	}{
 		{
-			name: "test create http proxy patch",
+			name: "Multiple services",
 			args: args{
 				httpProxy: &contourv1.HTTPProxy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -281,7 +281,7 @@ func Test_createPatch(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name: "test create http proxy patch",
+			name: "Multiple routes",
 			args: args{
 				httpProxy: &contourv1.HTTPProxy{
 					ObjectMeta: metav1.ObjectMeta{
@@ -341,7 +341,7 @@ func Test_createPatch(t *testing.T) {
 			wantErr:       false,
 		},
 		{
-			name: "test create http proxy mirror patch",
+			name: "Mirror",
 			args: args{
 				httpProxy: &contourv1.HTTPProxy{
 					ObjectMeta: metav1.ObjectMeta{
