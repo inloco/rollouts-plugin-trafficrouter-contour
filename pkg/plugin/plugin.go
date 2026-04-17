@@ -230,15 +230,38 @@ func normalizeWeights(route *contourv1.Route) {
 	boostWeights(route, 100)
 }
 
+func routeContainsService(route *contourv1.Route, serviceName string) bool {
+	for i := range route.Services {
+		if route.Services[i].Name == serviceName {
+			return true
+		}
+	}
+
+	return false
+}
+
+func normalizeManagedRouteWeights(httpProxy *contourv1.HTTPProxy, rollout *v1alpha1.Rollout) {
+	canaryServiceName := rollout.Spec.Strategy.Canary.CanaryService
+	if canaryServiceName == "" {
+		return
+	}
+
+	for i := range httpProxy.Spec.Routes {
+		if !routeContainsService(&httpProxy.Spec.Routes[i], canaryServiceName) {
+			continue
+		}
+
+		normalizeWeights(&httpProxy.Spec.Routes[i])
+	}
+}
+
 func createPatch(httpProxy *contourv1.HTTPProxy, rollout *v1alpha1.Rollout, canaryWeightPercent int32) ([]byte, types.PatchType, error) {
 	oldData, err := json.Marshal(httpProxy.DeepCopy())
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to marshal the current configuration: %w", err)
 	}
 
-	for i := range httpProxy.Spec.Routes {
-		normalizeWeights(&httpProxy.Spec.Routes[i])
-	}
+	normalizeManagedRouteWeights(httpProxy, rollout)
 
 	canarySvcs, stableSvcs, totalWeights, err := getRouteServices(httpProxy, rollout)
 	if err != nil {
