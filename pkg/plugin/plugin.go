@@ -309,6 +309,8 @@ func (r *RpcPlugin) verifyHTTPProxy(
 		return false, nil
 	}
 
+	normalizeManagedRouteWeights(httpProxy, rollout)
+
 	canarySvcs, stableSvcs, totalWeights, err := getRouteServices(httpProxy, rollout)
 	if err != nil {
 		return false, err
