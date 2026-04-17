@@ -187,6 +187,10 @@ func setDefaultWeights(route *contourv1.Route) {
 	}
 
 	for i := range route.Services {
+		if route.Services[i].Mirror {
+			continue
+		}
+
 		route.Services[i].Weight = 1
 	}
 }
@@ -195,6 +199,10 @@ func weightSum(route *contourv1.Route) int64 {
 	sum := int64(0)
 
 	for _, s := range route.Services {
+		if s.Mirror {
+			continue
+		}
+
 		sum += s.Weight
 	}
 
@@ -203,6 +211,10 @@ func weightSum(route *contourv1.Route) int64 {
 
 func boostWeights(route *contourv1.Route, factor int64) {
 	for i := range route.Services {
+		if route.Services[i].Mirror {
+			continue
+		}
+
 		route.Services[i].Weight *= factor
 	}
 }
